@@ -1,43 +1,71 @@
-## Quick Start 
-1. Dnowload the Yi-VL model.
+本项目是关于Yi的多模态系列模型，如Yi-VL-6B/34B等的实验与应用。
 
-Model |       Download
-|---|---
-Yi-VL-34B |• [🤗 Hugging Face](https://huggingface.co/01-ai/Yi-VL-34B)  • [🤖 ModelScope](https://www.modelscope.cn/models/01ai/Yi-VL-34B/summary)
-Yi-VL-6B | • [🤗 Hugging Face](https://huggingface.co/01-ai/Yi-VL-6B)  • [🤖 ModelScope](https://www.modelscope.cn/models/01ai/Yi-VL-6B/summary)
+### 模型推理
 
-2. To set up the environment and install the required packages, execute the following command.
-```
-git clone https://github.com/01-ai/Yi.git
-cd Yi/VL
-export PYTHONPATH=$PYTHONPATH:$(pwd)
-pip install -r requirements.txt
-```
-3. To perform inference of Yi-VL, execute the following command.
-```python
-python single_inference.py --model-path path-to-yi-vl-model --image-file path-to-image --question question-content
-```
-A quick example:
-```python
-CUDA_VISIBLE_DEVICES=0 python single_inference.py --model-path ../model/Yi-VL-34B --image-file images/cats.jpg --question "Describe the cats and what they are doing in detail."
-```
-Since the temperature is set to 0.2 by default, the ourput is not always the same. An example output is:
-```
-----------
-question: Describe the cats and what they are doing in detail.
-outputs: In the image, there are three cats situated on a stone floor. The first cat, with a mix of black, orange, and white fur, is actively eating from a metal bowl. The second cat, which is entirely black, is also engaged in eating from a separate metal bowl. The third cat, a mix of gray and white, is not eating but is instead looking off to the side, seemingly distracted from the food. The bowls are positioned close to each other, and the cats are all within a similar proximity to the bowls. The scene captures a typical moment of feline behavior, with some cats enjoying their meal while others appear indifferent or distracted.
-----------
+以命令行（CLI）的模型进行模型推理，需要将图片下载至images文件夹，同时将`single_inference.py`略作调整，以支持多次提问。
+
+运行命令如下：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python single_inference.py --model-path /data-ai/usr/models/Yi-VL-34B --image-file images/cats.jpg --question "How many cats are there in this image?"
 ```
 
-## Major difference with LLaVA
-1. We change the image token from ```<image>``` to ```<image_placeholder>```. The system prompt is modified to:
-```
-This is a chat between an inquisitive human and an AI assistant. Assume the role of the AI assistant. Read all the images carefully, and respond to the human's questions with informative, helpful, detailed and polite answers. 这是一个好奇的人类和一个人工智能助手之间的对话。假设你扮演这个AI助手的角色。仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。
+模型推理时使用一张A100（显存80G）就可满足推理要求。
 
-### Human: <image_placeholder>
-Describe the cats and what they are doing in detail.
-### Assistant:
+示例图片如下：
+
+![示例图片](https://s2.loli.net/2024/01/24/ZvF5dTAL8b3oSah.jpg)
+
+回复结果如下：
+
+![Yi-VL-34B模型回复](https://s2.loli.net/2024/01/24/6aqLIsl1Ted92Kn.png)
+
+
+### 可视化模型问答
+
+基于此，我们将会用gradio模块，对`Yi-VL-34B`模型和`GPT-4V`模型的结果进行对比。
+
+Python代码参考`gradio_server.py`.
+
+以下是对不同模型和问题的回复：
+
+- 图片：taishan.jpg，问题：这张图片是中国的哪座山？
+
+![](https://s2.loli.net/2024/01/25/R5lDfZrW6BVkdzN.png)
+
+- 图片：dishini.jpg，问题：这张图片是哪个景点的logo？
+
+![](https://s2.loli.net/2024/01/25/sjpBTodKwfnvuJ4.png)
+
+- 图片：fruit.jpg，问题：详细描述下这张图片
+
+![](https://s2.loli.net/2024/01/25/VsFvE32PrmZQ6Yd.png)
+
+- 图片：football.jpg，问题：图片中一个有几个人，他们在干什么？
+
+![](https://s2.loli.net/2024/01/25/GthKWBfiIjmd8wT.png)
+
+- 图片：cartoon.jpg，问题：这张图片是哪部日本的动漫？
+
+![](https://s2.loli.net/2024/01/25/9o1jMaQTK3c8bqH.png)
+
+从以上的几个测试用例来看，`Yi-VL-34B`模型的效果很不错，但对比`GPT-4V`模型，不管在图片理解，还是模型的回答上，仍有一定的差距。
+
+最后，我们来看一个验证码的例子（因为GPT-4V是不能用来破解验证码的！）
+
+![](https://s2.loli.net/2024/01/25/eZimVOFIEAcL7hy.png)
+
+可以看到，`Yi-VL-34B`模型在尝试回答，但给出了错误答案，而`GPT-4V`模型则会报错，报错信息如下：
+
+```json
+{
+  "error": {
+    "message": "Your input image may contain content that is not allowed by our safety system.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "content_policy_violation"
+  }
+}
 ```
-2. We add LayNorm in the two-layer MLP of the projection module.
-3. We train the parameters of ViT and scale up the input image resolution.
-4. We utilize Laion-400M data for pretraining.
+
+无疑，`GPT-4V`模型这样的设计是合情合理的。
