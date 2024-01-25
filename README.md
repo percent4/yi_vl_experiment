@@ -1,5 +1,7 @@
 本项目是关于Yi的多模态系列模型，如Yi-VL-6B/34B等的实验与应用。
 
+!nlp85-8.png](https://s2.loli.net/2024/01/25/NAc6Sb5eGlnoyWQ.png)
+
 ### 模型推理
 
 以命令行（CLI）的模型进行模型推理，需要将图片下载至images文件夹，同时将`single_inference.py`略作调整，以支持多次提问。

@@ -8,6 +8,7 @@ import base64
 import gradio as gr
 from PIL import Image
 from datetime import datetime
+import logging
 
 from llava.conversation import conv_templates
 from llava.mm_utils import (
@@ -28,6 +29,9 @@ def disable_torch_init():
     setattr(torch.nn.LayerNorm, "reset_parameters", lambda self: None)
 
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger()
+
 disable_torch_init()
 model_path = "/data-ai/usr/lmj/models/Yi-VL-34B"
 key_info["model_path"] = model_path
@@ -36,7 +40,7 @@ tokenizer, model, image_processor, context_len = load_pretrained_model(model_pat
 print("model loaded!")
 
 
-def model_infer(qs, image_file):
+def model_infer(qs, image_file, temperature, top_p, max_output_tokens):
     global model
     qs = DEFAULT_IMAGE_TOKEN + "\n" + qs
     conv = conv_templates["mm_default"].copy()
@@ -68,11 +72,11 @@ def model_infer(qs, image_file):
             input_ids,
             images=image_tensor.unsqueeze(0).to(dtype=torch.bfloat16).cuda(),
             do_sample=True,
-            temperature=0.1,
-            top_p=0.7,
+            temperature=temperature,
+            top_p=top_p,
             num_beams=1,
             stopping_criteria=[stopping_criteria],
-            max_new_tokens=1024,
+            max_new_tokens=max_output_tokens,
             use_cache=True,
         )
 
@@ -93,7 +97,7 @@ def model_infer(qs, image_file):
     return outputs
 
 
-def gpt_4v_answer(question, image_path):
+def gpt_4v_answer(question, image_path, temperature, top_p, max_output_tokens):
     try:
         with open(image_path, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -120,9 +124,9 @@ def gpt_4v_answer(question, image_path):
                     ]
                 }
             ],
-            "max_tokens": 1024,
-            "temperature": 0.1,
-            "top_p": 0.7
+            "max_tokens": max_output_tokens,
+            "temperature": temperature,
+            "top_p": top_p
         })
         headers = {
             'Content-Type': 'application/json',
@@ -139,18 +143,21 @@ def gpt_4v_answer(question, image_path):
     return result
 
 
-def model_answer(question, array):
+def model_answer(model_list, question, array, temperature, top_p, max_output_tokens):
     # save image
     im = Image.fromarray(array)
     image_path = f"./images/{datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}.jpg"
     im.save(image_path)
-    # yi-vl-34b output
-    model_output = model_infer(question, image_path)
-    # gpt-4v output
-    gpt4v_output = gpt_4v_answer(question, image_path)
-    print(f"question: {question}\n"
-          f"yi-vl-34 output: {model_output}\n"
-          f"gpt-4v output: {gpt4v_output}\n")
+    model_output, gpt4v_output = "", ""
+    if "Yi-VL-34B" in model_list:
+        # yi-vl-34b output
+        model_output = model_infer(question, image_path, temperature, top_p, max_output_tokens)
+    if "GPT-4V" in model_list:
+        # gpt-4v output
+        gpt4v_output = gpt_4v_answer(question, image_path, temperature, top_p, max_output_tokens)
+    logger.info(f"image path: {image_path}, question: {question}\n"
+                f"yi-vl-34 output: {model_output}\n"
+                f"gpt-4v output: {gpt4v_output}\n")
     return model_output, gpt4v_output
 
 
@@ -158,14 +165,20 @@ if __name__ == '__main__':
     with gr.Blocks() as demo:
         with gr.Row():
             with gr.Column():
+                checkout_group = gr.CheckboxGroup(choices=["Yi-VL-34B", "GPT-4V"], value="Yi-VL-34B", label='models')
                 image_box = gr.inputs.Image()
                 user_input = gr.TextArea(lines=5, placeholder="your question about the image")
+                temperature = gr.Slider(minimum=0.0, maximum=1.0, value=0.2, step=0.1, interactive=True,
+                                        label="Temperature", )
+                top_p = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Top P", )
+                max_output_tokens = gr.Slider(minimum=0, maximum=1024, value=512, step=64, interactive=True,
+                                              label="Max output tokens", )
             with gr.Column():
                 yi_vl_output = gr.TextArea(lines=5, label='Yi-VL-34B')
                 gpt_4v_output = gr.TextArea(lines=5, label='GPT-4V')
                 submit = gr.Button("Submit")
         submit.click(fn=model_answer,
-                     inputs=[user_input, image_box],
+                     inputs=[checkout_group, user_input, image_box, temperature, top_p, max_output_tokens],
                      outputs=[yi_vl_output, gpt_4v_output])
 
     demo.launch(server_port=50072, server_name="0.0.0.0", share=True)
